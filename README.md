@@ -5,6 +5,8 @@ A simple backend API for a transaction ledger. You can create accounts, add cred
 **Tech stack:** Node.js + Express + SQLite (through `better-sqlite3`).
 SQLite stores everything in one file, so you don't need to install or run a database server.
 
+**Live demo (AWS EC2):** http://13.60.162.70:3000 (health check: http://13.60.162.70:3000/health)
+
 ---
 
 ## 1. How to run
