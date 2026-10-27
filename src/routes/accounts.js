@@ -3,7 +3,7 @@ const { ApiError } = require('../errors');
 const {
   validateCreateAccount,
   validateCreateTransaction,
-  validatePagination,
+  validateHistoryQuery,
 } = require('../validators');
 
 function accountRoutes(ledger) {
@@ -32,10 +32,10 @@ function accountRoutes(ledger) {
     res.status(201).json(ledger.addTransaction(req.params.id, input));
   });
 
-  // GET /accounts/:id/transactions?page=1&limit=10  -> history, latest first
+  // GET /accounts/:id/transactions?type=credit&page=1&limit=10  -> history, latest first
   router.get('/:id/transactions', (req, res) => {
-    const pagination = validatePagination(req.query);
-    res.json(ledger.listTransactions(req.params.id, pagination));
+    const query = validateHistoryQuery(req.query);
+    res.json(ledger.listTransactions(req.params.id, query));
   });
 
   // Transactions are immutable: editing or deleting is never allowed.

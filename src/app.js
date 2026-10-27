@@ -12,6 +12,7 @@ function createApp({ dbFile } = {}) {
   const ledger = createLedger(db);
   const app = express();
 
+  app.use(require('./logger'));
   app.use(express.json());
 
   app.get('/health', (req, res) => res.json({ status: 'ok' }));

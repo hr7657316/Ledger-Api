@@ -111,8 +111,10 @@ function validateTransfer(body) {
   };
 }
 
-// page and limit are optional query params. Defaults: page=1, limit=10. Max limit=100.
-function validatePagination(query) {
+// Query params for transaction history:
+// page and limit are optional (defaults: page=1, limit=10, max limit=100).
+// type is optional: 'credit' or 'debit'. Not given -> both.
+function validateHistoryQuery(query) {
   const errors = [];
   const parse = (name, raw, def, max) => {
     if (raw === undefined) return def;
@@ -134,12 +136,16 @@ function validatePagination(query) {
     err.message = 'Invalid pagination parameters';
     throw err;
   }
-  return { page, limit };
+  const { type } = query;
+  if (type !== undefined && type !== 'credit' && type !== 'debit') {
+    throw validationError([{ field: 'type', message: "type must be either 'credit' or 'debit'" }]);
+  }
+  return { page, limit, type };
 }
 
 module.exports = {
   validateCreateAccount,
   validateCreateTransaction,
   validateTransfer,
-  validatePagination,
+  validateHistoryQuery,
 };

@@ -98,6 +98,7 @@ test('rejects duplicate reference_id for the same account, allows it on another 
   const dup = await addTx(a.id, { type: 'credit', amount: 10, reference_id: 'same' });
   assert.strictEqual(dup.status, 409);
   assert.strictEqual(dup.body.error.code, 'DUPLICATE_TRANSACTION');
+  assert.strictEqual(dup.body.error.details.existing_transaction.reference_id, 'same');
   const other = await addTx(b.id, { type: 'credit', amount: 10, reference_id: 'same' });
   assert.strictEqual(other.status, 201);
   const bal = await request(app).get(`/accounts/${a.id}/balance`);
@@ -116,6 +117,26 @@ test('lists transactions latest first with pagination info', async () => {
 
   const page3 = await request(app).get(`/accounts/${acc.id}/transactions?page=3&limit=2`);
   assert.deepStrictEqual(page3.body.data.map((t) => t.reference_id), ['r1']);
+});
+
+test('filters transactions by type', async () => {
+  const acc = await createAccount();
+  await addTx(acc.id, { type: 'credit', amount: 100, reference_id: 'c1' });
+  await addTx(acc.id, { type: 'debit', amount: 10, reference_id: 'd1' });
+  await addTx(acc.id, { type: 'credit', amount: 5, reference_id: 'c2' });
+
+  const credits = await request(app).get(`/accounts/${acc.id}/transactions?type=credit`);
+  assert.deepStrictEqual(credits.body.data.map((t) => t.reference_id), ['c2', 'c1']);
+  assert.strictEqual(credits.body.pagination.total_records, 2);
+
+  const debits = await request(app).get(`/accounts/${acc.id}/transactions?type=debit`);
+  assert.deepStrictEqual(debits.body.data.map((t) => t.reference_id), ['d1']);
+
+  const all = await request(app).get(`/accounts/${acc.id}/transactions`);
+  assert.strictEqual(all.body.pagination.total_records, 3);
+
+  const bad = await request(app).get(`/accounts/${acc.id}/transactions?type=refund`);
+  assert.strictEqual(bad.status, 400);
 });
 
 test('rejects invalid pagination parameters', async () => {

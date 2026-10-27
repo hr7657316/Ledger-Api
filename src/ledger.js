@@ -34,7 +34,7 @@ function createLedger(db) {
     ),
     getAccount: db.prepare('SELECT * FROM accounts WHERE id = ?'),
     findByReference: db.prepare(
-      'SELECT id FROM transactions WHERE account_id = ? AND reference_id = ?'
+      'SELECT * FROM transactions WHERE account_id = ? AND reference_id = ?'
     ),
     insertTransaction: db.prepare(`
       INSERT INTO transactions (id, account_id, type, amount, description, reference_id, created_at)
@@ -44,12 +44,16 @@ function createLedger(db) {
     credit: db.prepare('UPDATE accounts SET balance = balance + ? WHERE id = ?'),
     // "AND balance >= ?" guarantees we never go negative, even under concurrency.
     debit: db.prepare('UPDATE accounts SET balance = balance - ? WHERE id = ? AND balance >= ?'),
-    countTransactions: db.prepare('SELECT COUNT(*) AS total FROM transactions WHERE account_id = ?'),
+    // "(@type IS NULL OR type = @type)": no type given -> both credits and debits
+    countTransactions: db.prepare(`
+      SELECT COUNT(*) AS total FROM transactions
+      WHERE account_id = @accountId AND (@type IS NULL OR type = @type)
+    `),
     listTransactions: db.prepare(`
       SELECT * FROM transactions
-      WHERE account_id = ?
+      WHERE account_id = @accountId AND (@type IS NULL OR type = @type)
       ORDER BY created_at DESC, seq DESC
-      LIMIT ? OFFSET ?
+      LIMIT @limit OFFSET @offset
     `),
   };
 
@@ -62,11 +66,13 @@ function createLedger(db) {
   // Inserts one transaction row and updates the balance.
   // Must be called from inside a db.transaction so both happen together.
   function applyTransaction({ accountId, type, amount, description, referenceId }) {
-    if (sql.findByReference.get(accountId, referenceId)) {
+    const existing = sql.findByReference.get(accountId, referenceId);
+    if (existing) {
       throw new ApiError(
         409,
         'DUPLICATE_TRANSACTION',
-        `A transaction with reference_id '${referenceId}' already exists for account '${accountId}'`
+        `A transaction with reference_id '${referenceId}' already exists for account '${accountId}'`,
+        { existing_transaction: formatTransaction(existing) }
       );
     }
 
@@ -112,12 +118,14 @@ function createLedger(db) {
       };
     }),
 
-    listTransactions(accountId, { page, limit }) {
+    listTransactions(accountId, { page, limit, type }) {
       requireAccount(accountId);
-      const { total } = sql.countTransactions.get(accountId);
-      const rows = sql.listTransactions.all(accountId, limit, (page - 1) * limit);
+      const filter = { accountId, type: type ?? null };
+      const { total } = sql.countTransactions.get(filter);
+      const rows = sql.listTransactions.all({ ...filter, limit, offset: (page - 1) * limit });
       return {
         data: rows.map(formatTransaction),
+        filters: { type: type ?? null },
         pagination: {
           page,
           limit,
