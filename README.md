@@ -235,25 +235,87 @@ Every error has the same shape:
 
 ---
 
-## 6. Try it with curl
+## 6. How to test it yourself
 
+These steps use the live server at `http://13.60.162.70:3000`. To test locally, replace that with `http://localhost:3000`.
+
+Open a terminal (on Mac: **Cmd + Space**, type **Terminal**, press Enter) and run one command at a time.
+
+### Step 1: Create two accounts
 ```bash
-# create two accounts
-curl -X POST localhost:3000/accounts -H "Content-Type: application/json" -d '{"name":"Alice"}'
-curl -X POST localhost:3000/accounts -H "Content-Type: application/json" -d '{"name":"Bob"}'
-
-# credit Alice (replace <ALICE_ID>)
-curl -X POST localhost:3000/accounts/<ALICE_ID>/transactions -H "Content-Type: application/json" \
-  -d '{"type":"credit","amount":100,"description":"Deposit","reference_id":"dep-1"}'
-
-# transfer 30 from Alice to Bob
-curl -X POST localhost:3000/transfers -H "Content-Type: application/json" \
-  -d '{"from_account_id":"<ALICE_ID>","to_account_id":"<BOB_ID>","amount":30,"reference_id":"tr-1"}'
-
-# history and balance
-curl "localhost:3000/accounts/<ALICE_ID>/transactions?page=1&limit=10"
-curl localhost:3000/accounts/<ALICE_ID>/balance
+curl -X POST http://13.60.162.70:3000/accounts -H "Content-Type: application/json" -d '{"name":"Alice"}'
+curl -X POST http://13.60.162.70:3000/accounts -H "Content-Type: application/json" -d '{"name":"Bob"}'
 ```
+Each response looks like `{"id":"5f2c...","name":"Alice","balance":0,"created_at":"..."}`. Copy both `id` values and save them so the next commands can use them:
+```bash
+A=paste-alice-id-here
+B=paste-bob-id-here
+```
+
+### Step 2: Credit 100 to Alice
+```bash
+curl -X POST http://13.60.162.70:3000/accounts/$A/transactions -H "Content-Type: application/json" -d '{"type":"credit","amount":100,"description":"Salary","reference_id":"ref-1"}'
+```
+✅ Expect `"balance":100`.
+
+### Step 3: Debit 30 from Alice
+```bash
+curl -X POST http://13.60.162.70:3000/accounts/$A/transactions -H "Content-Type: application/json" -d '{"type":"debit","amount":30,"reference_id":"ref-2"}'
+```
+✅ Expect `"balance":70`.
+
+### Step 4: Error cases
+Duplicate `reference_id`:
+```bash
+curl -X POST http://13.60.162.70:3000/accounts/$A/transactions -H "Content-Type: application/json" -d '{"type":"credit","amount":100,"reference_id":"ref-1"}'
+```
+✅ Expect `DUPLICATE_TRANSACTION` (409).
+
+Debit more than the balance:
+```bash
+curl -X POST http://13.60.162.70:3000/accounts/$A/transactions -H "Content-Type: application/json" -d '{"type":"debit","amount":5000,"reference_id":"ref-3"}'
+```
+✅ Expect `INSUFFICIENT_BALANCE` (422).
+
+Invalid data (wrong type, negative amount, missing reference):
+```bash
+curl -X POST http://13.60.162.70:3000/accounts/$A/transactions -H "Content-Type: application/json" -d '{"type":"refund","amount":-5}'
+```
+✅ Expect `VALIDATION_ERROR` (400) with a list of the problems.
+
+Unknown account:
+```bash
+curl http://13.60.162.70:3000/accounts/does-not-exist
+```
+✅ Expect `NOT_FOUND` (404).
+
+### Step 5: Transfer 20 from Alice to Bob
+```bash
+curl -X POST http://13.60.162.70:3000/transfers -H "Content-Type: application/json" -d "{\"from_account_id\":\"$A\",\"to_account_id\":\"$B\",\"amount\":20,\"reference_id\":\"tr-1\"}"
+```
+✅ Expect Alice at **50** and Bob at **20**.
+
+### Step 6: Check results in the browser
+GET requests work as plain links. Put the real ID in place of `<ALICE_ID>`:
+```
+http://13.60.162.70:3000/accounts/<ALICE_ID>/balance
+http://13.60.162.70:3000/accounts/<ALICE_ID>/transactions?page=1&limit=10
+http://13.60.162.70:3000/accounts/<ALICE_ID>/transactions?page=0
+```
+- **Balance:** should show **50**.
+- **History:** lists transactions newest first, with `pagination` info.
+- **page=0:** should show `INVALID_PAGINATION`.
+
+### Using Postman instead
+Install Postman (free, postman.com) and create a request:
+- Choose the method (`POST` or `GET`) and paste the URL.
+- For `POST`, put the JSON under **Body → raw → JSON**.
+
+### Automated tests
+```bash
+npm test
+```
+This runs 15 tests covering every rule above against a temporary in-memory database.
 
 ---
 
