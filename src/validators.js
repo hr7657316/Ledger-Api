@@ -12,6 +12,8 @@ function requireObjectBody(body) {
   }
 }
 
+const MAX_AMOUNT = 1_000_000_000; // largest amount allowed in one transaction
+
 // Amount must be a positive number with at most 2 decimal places.
 // Returns the amount in cents (integer) to avoid floating point errors.
 function parseAmount(value, errors) {
@@ -23,13 +25,15 @@ function parseAmount(value, errors) {
     errors.push({ field: 'amount', message: 'amount must be greater than 0' });
     return null;
   }
-  const cents = Math.round(value * 100);
-  if (Math.abs(cents - value * 100) > 1e-6) {
-    errors.push({ field: 'amount', message: 'amount can have at most 2 decimal places' });
+  if (value > MAX_AMOUNT) {
+    errors.push({ field: 'amount', message: `amount must be at most ${MAX_AMOUNT}` });
     return null;
   }
-  if (!Number.isSafeInteger(cents)) {
-    errors.push({ field: 'amount', message: 'amount is too large' });
+  // Exact check: converting to cents and back must give the same number.
+  // 10.5 -> 1050 -> 10.5 (ok), 1.234 -> 123 -> 1.23 (rejected), 0.001 -> 0 -> 0 (rejected).
+  const cents = Math.round(value * 100);
+  if (cents / 100 !== value) {
+    errors.push({ field: 'amount', message: 'amount can have at most 2 decimal places' });
     return null;
   }
   return cents;
@@ -112,7 +116,7 @@ function validateTransfer(body) {
 }
 
 // Query params for transaction history:
-// page and limit are optional (defaults: page=1, limit=10, max limit=100).
+// page and limit are optional (defaults: page=1, limit=10; max page=1,000,000, max limit=100).
 // type is optional: 'credit' or 'debit'. Not given -> both.
 function validateHistoryQuery(query) {
   const errors = [];
@@ -128,7 +132,7 @@ function validateHistoryQuery(query) {
     }
     return Number(raw);
   };
-  const page = parse('page', query.page, 1);
+  const page = parse('page', query.page, 1, 1_000_000);
   const limit = parse('limit', query.limit, 10, 100);
   if (errors.length) {
     const err = validationError(errors);

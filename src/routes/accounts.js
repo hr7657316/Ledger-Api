@@ -39,9 +39,13 @@ function accountRoutes(ledger) {
   });
 
   // Transactions are immutable: editing or deleting is never allowed.
-  router.all(['/:id/transactions', '/:id/transactions/:txId'], (req, res) => {
+  const rejectChange = (req, res) => {
+    res.set('Allow', req.params.txId ? '' : 'GET, POST');
     throw new ApiError(405, 'METHOD_NOT_ALLOWED', 'Transactions are immutable and cannot be modified or deleted');
-  });
+  };
+  for (const method of ['put', 'patch', 'delete']) {
+    router[method](['/:id/transactions', '/:id/transactions/:txId'], rejectChange);
+  }
 
   return router;
 }

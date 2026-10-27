@@ -13,7 +13,9 @@ function createApp({ dbFile } = {}) {
   const app = express();
 
   app.use(require('./logger'));
-  app.use(express.json());
+  // strict: false lets JSON like "abc" or null through, so the validators can
+  // reject it with a clear VALIDATION_ERROR ("body must be a JSON object").
+  app.use(express.json({ strict: false }));
 
   app.get('/health', (req, res) => res.json({ status: 'ok' }));
   app.use('/accounts', accountRoutes(ledger));
@@ -30,6 +32,12 @@ function createApp({ dbFile } = {}) {
       err = new ApiError(400, 'INVALID_JSON', 'Request body is not valid JSON');
     } else if (err.code === 'SQLITE_CONSTRAINT_UNIQUE') {
       err = new ApiError(409, 'DUPLICATE_TRANSACTION', 'Duplicate reference_id for this account');
+    } else if (!(err instanceof ApiError) && err.status >= 400 && err.status < 500) {
+      // Client mistakes caught by Express itself (body too large, bad charset,
+      // malformed URL like /accounts/%ZZ) keep their 4xx status instead of becoming a 500.
+      const codes = { 413: 'PAYLOAD_TOO_LARGE', 415: 'UNSUPPORTED_MEDIA_TYPE' };
+      const code = codes[err.status] || (err instanceof URIError ? 'INVALID_URL' : 'BAD_REQUEST');
+      err = new ApiError(err.status, code, err.expose ? err.message : 'Bad request');
     } else if (!(err instanceof ApiError)) {
       console.error(err);
       err = new ApiError(500, 'INTERNAL_ERROR', 'Something went wrong');

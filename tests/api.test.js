@@ -211,3 +211,38 @@ test('transfer validations', async () => {
   });
   assert.strictEqual(same.status, 400);
 });
+
+test('amount edge cases: tiny, too many decimals, too large, large valid', async () => {
+  const acc = await createAccount();
+  for (const amount of [0.00000001, 0.001, 1.005, 1_000_000_000.01]) {
+    const res = await addTx(acc.id, { type: 'credit', amount, reference_id: `bad-${amount}` });
+    assert.strictEqual(res.status, 400, String(amount));
+    assert.strictEqual(res.body.error.code, 'VALIDATION_ERROR');
+  }
+  const big = await addTx(acc.id, { type: 'credit', amount: 123456789.12, reference_id: 'big' });
+  assert.strictEqual(big.status, 201);
+  assert.strictEqual(big.body.balance, 123456789.12);
+});
+
+test('client mistakes return 4xx, never 500', async () => {
+  const acc = await createAccount();
+  const huge = await request(app).post('/accounts').set('Content-Type', 'application/json')
+    .send(JSON.stringify({ name: 'x'.repeat(200_000) }));
+  assert.strictEqual(huge.status, 413);
+  assert.strictEqual(huge.body.error.code, 'PAYLOAD_TOO_LARGE');
+
+  const badUrl = await request(app).get('/accounts/%ZZ/balance');
+  assert.strictEqual(badUrl.status, 400);
+  assert.strictEqual(badUrl.body.error.code, 'INVALID_URL');
+
+  const primitive = await request(app).post('/accounts').set('Content-Type', 'application/json').send('"Alice"');
+  assert.strictEqual(primitive.status, 400);
+  assert.strictEqual(primitive.body.error.code, 'VALIDATION_ERROR');
+
+  const hugePage = await request(app).get(`/accounts/${acc.id}/transactions?page=99999999999999999999`);
+  assert.strictEqual(hugePage.status, 400);
+  assert.strictEqual(hugePage.body.error.code, 'INVALID_PAGINATION');
+
+  const readOne = await request(app).get(`/accounts/${acc.id}/transactions/some-id`);
+  assert.strictEqual(readOne.status, 404);
+});
